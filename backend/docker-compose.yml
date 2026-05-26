@@ -1,0 +1,89 @@
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: supportiq-postgres
+    environment:
+      POSTGRES_DB: supportiq
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: supportiq-redis
+    ports:
+      - "6379:6379"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: supportiq-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: supportiq-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+
+  qdrant:
+    image: qdrant/qdrant
+    container_name: supportiq-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  springboot:
+    build: ./springboot
+    container_name: supportiq-springboot
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/supportiq
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_SECRET: supportiq-secret-key-2026-very-long-secret
+      JWT_EXPIRATION: 86400000
+
+  fastapi:
+    build: ./fastapi
+    container_name: supportiq-fastapi
+    depends_on:
+      - kafka
+      - qdrant
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      GROQ_API_KEY: your-groq-api-key-here
+
+volumes:
+  postgres_data:
+  qdrant_data:
